@@ -372,7 +372,7 @@ function attachPedidosListener(){
   if(!pedidosRef) return;
   pedidosRef.on('value', snapshot=>{
     const val = snapshot.val() || {};
-    acompanhamento = Object.values(val);
+    acompanhamento = Object.values(val).map(fromFbRow); // desfaz a sanitização de chaves (ex: "Obs_ Entrega" -> "Obs. Entrega")
     updatePills();
     render();
     renderEfficiencyDashboard();
@@ -387,7 +387,7 @@ function syncPedidosBatch(rows){
   if(!rows.length) return;
   if(fbAvailable && pedidosRef){
     const updates = {};
-    rows.forEach(r => { updates[r._id] = r; });
+    rows.forEach(r => { updates[r._id] = toFbRow(r); }); // sanitiza chaves inválidas pro Firebase (ex: "Obs. Entrega")
     pedidosRef.update(updates).catch(err=>{
       alert('Não foi possível gravar no Firebase: ' + err.message + '\n\nVerifique as regras do Realtime Database (caminho "monitoramentoEntregas"). Os dados foram salvos só neste PC por enquanto.');
       setSyncStatus('⚠ erro ao gravar: ' + err.message, false);
@@ -409,7 +409,7 @@ function localFallbackAdd(rows){
 function syncPedidoFields(id, fields){
   if(fbAvailable && pedidosRef){
     const updates = {};
-    Object.entries(fields).forEach(([k,v]) => { updates[`${id}/${k}`] = v; });
+    Object.entries(fields).forEach(([k,v]) => { updates[`${id}/${FB_KEY_MAP[k] || k}`] = v; });
     pedidosRef.update(updates).catch(err=>{
       alert('Não foi possível gravar no Firebase: ' + err.message + '\n\nVerifique as regras do Realtime Database (caminho "monitoramentoEntregas"). A alteração foi salva só neste PC por enquanto.');
       setSyncStatus('⚠ erro ao gravar: ' + err.message, false);
@@ -428,6 +428,27 @@ function localFallbackFields(id, fields){
 
 // ---------- Column model ----------
 const BASE_COLS = ['EMISSÃO NF','ENTREGA','Pedido','Ogv','Danfe','Sold','Emissor','Endereço','Nº','CEP','Cidade','Peso','Valor','Obs. Entrega','car','Transp','Veíc','Placa','Ent','Curva','Cheg','Saida','Status','STATUS TMS','Código','Status da entrega','Ocorrência','OBS Adicional','Responsável','Vendedor/Supervisor'];
+
+// O Firebase Realtime Database não aceita chaves com . # $ / [ ] — converte esses nomes de coluna
+// para uma versão segura na hora de gravar, e converte de volta na hora de ler.
+const FB_KEY_MAP = {};      // nome original -> nome seguro pro Firebase
+const FB_KEY_REVERSE = {};  // nome seguro -> nome original
+function sanitizeFbKey(key){ return key.replace(/[.#$/\[\]]/g, '_'); }
+BASE_COLS.forEach(col=>{
+  const safe = sanitizeFbKey(col);
+  FB_KEY_MAP[col] = safe;
+  FB_KEY_REVERSE[safe] = col;
+});
+function toFbRow(row){
+  const out = {};
+  Object.entries(row).forEach(([k,v])=>{ out[FB_KEY_MAP[k] || k] = v; });
+  return out;
+}
+function fromFbRow(row){
+  const out = {};
+  Object.entries(row).forEach(([k,v])=>{ out[FB_KEY_REVERSE[k] || k] = v; });
+  return out;
+}
 
 // Display order per spec: Devolução first, then after Danfe -> Status, STATUS TMS, OBS Adicional, Ocorrência, Responsável, then rest in original order
 const DISPLAY_COLS = ['__SEL__','EMISSÃO NF','ENTREGA','Pedido','Ogv','Danfe','Sold','Obs. Entrega','Status','STATUS TMS','OBS Adicional','Ocorrência','Responsável','car','Transp','Emissor','Endereço','Nº','CEP','Cidade','Peso','Valor','Veíc','Placa','Ent','Curva','Cheg','Saida','Código','Status da entrega','Vendedor/Supervisor'];
