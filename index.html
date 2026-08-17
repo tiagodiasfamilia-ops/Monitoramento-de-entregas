@@ -522,65 +522,83 @@ function importAcompanhamentoFile(file){
   return new Promise((resolve)=>{
     const reader = new FileReader();
     reader.onload = (ev)=>{
-      const wb = XLSX.read(ev.target.result, {type:'array', cellDates:true});
-      const sheetName = wb.SheetNames.find(n => n.trim().toLowerCase() === 'base') || wb.SheetNames[0];
-      const ws = wb.Sheets[sheetName];
-      const json = XLSX.utils.sheet_to_json(ws, {defval:''});
-      const headerRow = XLSX.utils.sheet_to_json(ws, {header:1})[0] || [];
-      const lastColName = headerRow[headerRow.length - 1];
-      const isNewPhoneCol = lastColName && !BASE_COLS.includes(lastColName);
+      try{
+        if(typeof XLSX === 'undefined'){
+          throw new Error('Biblioteca de leitura de Excel (XLSX) não carregou — verifique sua conexão/rede e recarregue a página');
+        }
+        const wb = XLSX.read(ev.target.result, {type:'array', cellDates:true});
+        const sheetName = wb.SheetNames.find(n => n.trim().toLowerCase() === 'base') || wb.SheetNames[0];
+        const ws = wb.Sheets[sheetName];
+        const json = XLSX.utils.sheet_to_json(ws, {defval:''});
+        const headerRow = XLSX.utils.sheet_to_json(ws, {header:1})[0] || [];
+        const lastColName = headerRow[headerRow.length - 1];
+        const isNewPhoneCol = lastColName && !BASE_COLS.includes(lastColName);
 
-      // mapa: nome normalizado do cabeçalho -> nome real da coluna no arquivo
-      const headerMap = {};
-      headerRow.forEach(h => { headerMap[normalizeHeader(h)] = h; });
+        // mapa: nome normalizado do cabeçalho -> nome real da coluna no arquivo
+        const headerMap = {};
+        headerRow.forEach(h => { headerMap[normalizeHeader(h)] = h; });
 
-      const missingCols = [];
-      let phoneCount = 0;
-      batchCounter++;
-      const imported = json.map(row=>{
-        const obj = {_id: uid(), _batch: batchCounter, _file: file.name, _devolucao: null};
-        BASE_COLS.forEach(col=>{
-          let v = row[col];
-          if(v === undefined){
-            // tenta achar a coluna por nome aproximado (ignora acento/maiúscula/espaço extra)
-            const realKey = headerMap[normalizeHeader(col)];
-            if(realKey !== undefined) v = row[realKey];
-          }
-          if(col === 'EMISSÃO NF' || col === 'ENTREGA'){ v = excelDateToStr(v); }
-          obj[col] = (v === undefined) ? '' : v;
+        const missingCols = [];
+        let phoneCount = 0;
+        batchCounter++;
+        const imported = json.map(row=>{
+          const obj = {_id: uid(), _batch: batchCounter, _file: file.name, _devolucao: null};
+          BASE_COLS.forEach(col=>{
+            let v = row[col];
+            if(v === undefined){
+              // tenta achar a coluna por nome aproximado (ignora acento/maiúscula/espaço extra)
+              const realKey = headerMap[normalizeHeader(col)];
+              if(realKey !== undefined) v = row[realKey];
+            }
+            if(col === 'EMISSÃO NF' || col === 'ENTREGA'){ v = excelDateToStr(v); }
+            obj[col] = (v === undefined) ? '' : v;
+          });
+          // editable fields fall back to imported values
+          obj.Status = normalizeStatus(obj['Status']);
+          obj['STATUS TMS'] = obj['STATUS TMS'] || '';
+          obj['Ocorrência'] = obj['Ocorrência'] || '';
+          obj['OBS Adicional'] = obj['OBS Adicional'] || '';
+          obj['Responsável'] = normalizeResponsavel(obj['Responsável']);
+          // telefone do vendedor: última coluna do arquivo importado
+          obj._vendorPhone = isNewPhoneCol ? String(row[lastColName] || '').trim() : '';
+          if(obj._vendorPhone) phoneCount++;
+          return obj;
         });
-        // editable fields fall back to imported values
-        obj.Status = normalizeStatus(obj['Status']);
-        obj['STATUS TMS'] = obj['STATUS TMS'] || '';
-        obj['Ocorrência'] = obj['Ocorrência'] || '';
-        obj['OBS Adicional'] = obj['OBS Adicional'] || '';
-        obj['Responsável'] = normalizeResponsavel(obj['Responsável']);
-        // telefone do vendedor: última coluna do arquivo importado
-        obj._vendorPhone = isNewPhoneCol ? String(row[lastColName] || '').trim() : '';
-        if(obj._vendorPhone) phoneCount++;
-        return obj;
-      });
 
-      // diagnóstico: quais colunas esperadas não foram encontradas no arquivo (nem exata nem aproximada)
-      BASE_COLS.forEach(col=>{
-        const foundExact = headerRow.includes(col);
-        const foundFuzzy = headerMap[normalizeHeader(col)] !== undefined;
-        if(!foundExact && !foundFuzzy) missingCols.push(col);
-      });
+        if(!imported.length){
+          alert(`O arquivo foi lido, mas nenhuma linha foi encontrada na aba "${sheetName}". Confira se essa é mesmo a aba com os dados (abas do arquivo: ${wb.SheetNames.join(', ')}).`);
+        }
 
-      syncPedidosBatch(imported); // grava no Firebase — o listener atualiza "acompanhamento" e re-renderiza sozinho
-      const phoneMsg = isNewPhoneCol
-        ? `telefone lido da coluna "${lastColName}" · ${phoneCount} de ${imported.length} pedido(s) com telefone`
-        : `nenhuma coluna extra de telefone encontrada após "${BASE_COLS[BASE_COLS.length-1]}" neste arquivo`;
-      vendorSheetStatus = missingCols.length
-        ? `${phoneMsg} · ⚠ colunas não encontradas no arquivo: ${missingCols.join(', ')} (cabeçalhos lidos: ${headerRow.join(', ')})`
-        : phoneMsg;
-      updatePills();
+        // diagnóstico: quais colunas esperadas não foram encontradas no arquivo (nem exata nem aproximada)
+        BASE_COLS.forEach(col=>{
+          const foundExact = headerRow.includes(col);
+          const foundFuzzy = headerMap[normalizeHeader(col)] !== undefined;
+          if(!foundExact && !foundFuzzy) missingCols.push(col);
+        });
+
+        syncPedidosBatch(imported); // grava no Firebase — o listener atualiza "acompanhamento" e re-renderiza sozinho
+        const phoneMsg = isNewPhoneCol
+          ? `telefone lido da coluna "${lastColName}" · ${phoneCount} de ${imported.length} pedido(s) com telefone`
+          : `nenhuma coluna extra de telefone encontrada após "${BASE_COLS[BASE_COLS.length-1]}" neste arquivo`;
+        vendorSheetStatus = missingCols.length
+          ? `${phoneMsg} · ⚠ colunas não encontradas no arquivo: ${missingCols.join(', ')} (cabeçalhos lidos: ${headerRow.join(', ')})`
+          : phoneMsg;
+        updatePills();
+      } catch(err){
+        alert('Erro ao ler o arquivo "' + file.name + '": ' + err.message);
+        vendorSheetStatus = '⚠ erro ao importar "' + file.name + '": ' + err.message;
+        updatePills();
+      }
+      resolve();
+    };
+    reader.onerror = ()=>{
+      alert('Não foi possível ler o arquivo "' + file.name + '".');
       resolve();
     };
     reader.readAsArrayBuffer(file);
   });
 }
+
 
 
 document.getElementById('btnExcluirAcompanhamento').addEventListener('click', ()=>{
@@ -604,16 +622,26 @@ document.getElementById('fileDrivin').addEventListener('change', (e)=>{
   if(!file) return;
   const reader = new FileReader();
   reader.onload = (ev)=>{
-    const wb = XLSX.read(ev.target.result, {type:'array', cellDates:true});
-    const sheetName = wb.SheetNames.find(n=>n.trim().toLowerCase()==='base') || wb.SheetNames[0];
-    const ws = wb.Sheets[sheetName];
-    const json = XLSX.utils.sheet_to_json(ws, {defval:''});
-    drivinRows = json;
-    drivinCols = json.length ? Object.keys(json[0]) : [];
-    updatePills();
-    crossReferenceDrivin();
-    render();
-    renderEfficiencyDashboard();
+    try{
+      if(typeof XLSX === 'undefined'){
+        throw new Error('Biblioteca de leitura de Excel (XLSX) não carregou — verifique sua conexão/rede e recarregue a página');
+      }
+      const wb = XLSX.read(ev.target.result, {type:'array', cellDates:true});
+      const sheetName = wb.SheetNames.find(n=>n.trim().toLowerCase()==='base') || wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
+      const json = XLSX.utils.sheet_to_json(ws, {defval:''});
+      drivinRows = json;
+      drivinCols = json.length ? Object.keys(json[0]) : [];
+      updatePills();
+      crossReferenceDrivin();
+      render();
+      renderEfficiencyDashboard();
+    } catch(err){
+      alert('Erro ao ler o arquivo "' + file.name + '": ' + err.message);
+    }
+  };
+  reader.onerror = ()=>{
+    alert('Não foi possível ler o arquivo "' + file.name + '".');
   };
   reader.readAsArrayBuffer(file);
   e.target.value = '';
@@ -1225,6 +1253,9 @@ renderHeader();
 refreshFilters();
 render();
 renderEfficiencyDashboard();
+if(typeof XLSX === 'undefined'){
+  setSyncStatus('⚠ biblioteca de leitura de Excel não carregou — recarregue a página ou verifique a rede', false);
+}
 </script>
 </body>
 </html>
