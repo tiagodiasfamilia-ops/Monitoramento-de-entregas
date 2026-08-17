@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monitoramento de Entregas</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#151f38; --panel2:#1c2846; --border:#2a3557;
+    --text:#e8ecf7; --muted:#8b93b0; --accent:#4f7cff; --accent2:#22c3a6;
+    --red:#3a1420; --red-b:#e2445c; --red-t:#ffb3c0;
+    --blue:#122a45; --blue-b:#4f7cff; --blue-t:#a9c2ff;
+    --orange:#3a2712; --orange-b:#e2924a; --orange-t:#ffcf9c;
+    --ok:#1c3a2c; --ok-b:#2fbf80;
+    --radius:10px;
+    font-family: 'Segoe UI', system-ui, -apple-system, Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--text); font-size:13px;}
+  header{padding:18px 24px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between;}
+  header h1{font-size:18px; margin:0; font-weight:700; letter-spacing:.2px;}
+  header .sub{color:var(--muted); font-size:12px; margin-top:2px;}
+
+  .container{padding:20px 24px 60px;}
+
+  /* KPIs */
+  .kpis{display:grid; grid-template-columns:repeat(7,1fr); gap:12px; margin-bottom:18px;}
+  .kpi{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px;}
+  .kpi .label{color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px;}
+  .kpi .value{font-size:22px; font-weight:700; margin-top:4px;}
+  .kpi.total .value{color:#fff;}
+  .kpi.entregue .value{color:var(--ok-b);}
+  .kpi.transito .value{color:var(--accent);}
+  .kpi.reentrega .value{color:var(--orange-b);}
+  .kpi.ocorrencia .value{color:#b98cff;}
+  .kpi.cancelado .value{color:var(--red-b);}
+  .kpi.taxa .value{color:var(--accent2);}
+
+  /* Import cards */
+  .imports{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;}
+  .import-card{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px;}
+  .import-card h3{margin:0 0 2px; font-size:11.5px;}
+  .import-card p{margin:0 0 6px; color:var(--muted); font-size:10.5px; line-height:1.3;}
+  .import-card .row{display:flex; gap:6px; align-items:center; flex-wrap:wrap;}
+  .import-card input[type=file]{font-size:10.5px; max-width:100%;}
+  .import-card .pill{font-size:10px; padding:2px 8px;}
+
+  /* Eficiência por cliente */
+  .eff-panel{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:16px 18px; margin-bottom:18px;}
+  .eff-panel:has(.eff-client-row:only-child){padding:12px 18px;}
+  .eff-header{display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:14px;}
+  .eff-header .eff-title{font-size:17px; font-weight:800;}
+  .eff-header .eff-date{text-align:right; font-size:11px; color:var(--muted);}
+  .eff-header .eff-date b{display:block; font-size:13px; color:var(--text); text-transform:capitalize;}
+  .eff-client-row{display:flex; flex-direction:column; align-items:flex-start; gap:8px; margin-bottom:16px;}
+  .eff-client-row label{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px;}
+  .eff-client-chips{display:flex; gap:6px; flex-wrap:wrap;}
+  .eff-client-chips .chip{font-size:13px; font-weight:700; padding:6px 14px;}
+  .eff-client-chips .chip.all{border-color:var(--accent2);}
+  .eff-client-chips .chip.all.active{background:var(--accent2); color:#08331c; border-color:var(--accent2);}
+  .eff-areas{display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:18px;}
+  .eff-area{border-radius:10px; padding:12px 8px; text-align:center; color:#fff;}
+  .eff-area.comercial{background:#e2445c;}
+  .eff-area.armazem{background:#4f7cff;}
+  .eff-area.transporte{background:#7ac74f;}
+  .eff-area.adm{background:#9a5fe2;}
+  .eff-area .emoji{font-size:26px; display:block; margin-bottom:4px;}
+  .eff-area .label{font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.3px;}
+  .eff-area .count{font-size:10px; opacity:.85; margin-top:2px;}
+  .eff-tables{display:grid; grid-template-columns:repeat(3,1fr); gap:12px;}
+  .eff-table{border:1px solid var(--border); border-radius:8px; overflow:hidden;}
+  .eff-table .eff-t-title{background:var(--panel2); padding:7px 10px; font-size:11px; font-weight:700; text-align:center; text-transform:uppercase; letter-spacing:.3px;}
+  .eff-table table{width:100%; min-width:0; font-size:11px;}
+  .eff-table thead th{font-size:9.5px; padding:5px 8px; background:transparent; position:static;}
+  .eff-table tbody td{padding:5px 8px; cursor:default;}
+  .eff-table tbody tr:hover{background:transparent;}
+  @media (max-width: 900px){ .eff-tables{grid-template-columns:1fr;} .eff-areas{grid-template-columns:repeat(2,1fr);} }
+  input[type=file]{color:var(--muted); font-size:11.5px;}
+  .btn{background:var(--accent); color:#fff; border:none; padding:7px 12px; border-radius:7px; font-size:12px; cursor:pointer; font-weight:600;}
+  .btn:hover{filter:brightness(1.1);}
+  .btn.secondary{background:var(--panel2); border:1px solid var(--border); color:var(--text);}
+  .btn.danger{background:var(--red-b); }
+  .btn.small{padding:4px 9px; font-size:11px;}
+  .pill{background:var(--panel2); border:1px solid var(--border); border-radius:999px; padding:3px 10px; font-size:11px; color:var(--muted);}
+
+  /* Filters */
+  .filters{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; margin-bottom:14px; display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start;}
+  .filter-group{display:flex; flex-direction:column; gap:6px;}
+  .filter-group .ftitle{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:2px;}
+  .chip-row{display:flex; gap:6px; flex-wrap:wrap; max-width:420px;}
+  .chip{border:1px solid var(--border); background:var(--panel2); padding:5px 10px; border-radius:999px; font-size:11.5px; cursor:pointer; user-select:none; color:var(--muted);}
+  .chip.active{background:var(--accent); color:#fff; border-color:var(--accent);}
+  input[type=date]{background:var(--panel2); border:1px solid var(--border); color:var(--text); padding:6px 8px; border-radius:7px; font-size:12px;}
+
+  /* Table */
+  .table-wrap{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); overflow:auto; max-height:65vh;}
+  table{border-collapse:collapse; width:100%; min-width:2200px; font-size:11.5px;}
+  thead th{position:sticky; top:0; background:var(--panel2); text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); white-space:nowrap; font-size:10.5px; text-transform:uppercase; letter-spacing:.3px; color:var(--muted); z-index:2;}
+  tbody td{padding:7px 10px; border-bottom:1px solid #1e2947; white-space:nowrap;}
+  tbody tr{cursor:pointer;}
+  tbody tr:hover{background:#1a2645;}
+  tbody tr.risk{background:var(--red); color:var(--red-t);}
+  tbody tr.risk:hover{background:#4a1a2a;}
+  tbody tr.devsim{background:var(--blue); color:var(--blue-t);}
+  tbody tr.devsim:hover{background:#183656;}
+  tbody tr.devnao{background:var(--orange); color:var(--orange-t);}
+  tbody tr.devnao:hover{background:#4a3218;}
+  .badge{padding:2px 8px; border-radius:999px; font-size:10.5px; font-weight:600; display:inline-block;}
+  .b-entregue{background:var(--ok); color:var(--ok-b);}
+  .b-cancelado{background:var(--red); color:var(--red-b);}
+  .b-reentrega{background:#3a2b12; color:#e2c24a;}
+  .b-parcial{background:#2a2140; color:#b98cff;}
+  .b-transito{background:#122a45; color:var(--accent);}
+  .b-ocorrencia{background:#3a2712; color:var(--orange-b);}
+  .b-tms-entregue{background:var(--ok); color:var(--ok-b);}
+  .b-tms-transito{background:#3a2b12; color:#e2c24a;}
+  .b-tms-rejeitado{background:var(--red); color:var(--red-b);}
+  .dev-btn{padding:2px 8px; border-radius:6px; border:1px solid var(--border); background:var(--panel2); font-size:10.5px; cursor:pointer; margin-right:4px;}
+  .dev-btn.sim.active{background:var(--blue-b); color:#fff;}
+  .dev-btn.nao.active{background:var(--orange-b); color:#fff;}
+  .alert-icon{color:var(--red-b); font-weight:700;}
+  .empty-cell{color:#4a527a;}
+
+  /* toolbar above table */
+  .toolbar{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:10px; flex-wrap:wrap;}
+  .toolbar .count{color:var(--muted); font-size:12px;}
+  .search-wrap{position:relative; flex:1; max-width:340px;}
+  #searchInput{width:100%; background:var(--panel2); border:1px solid var(--border); color:var(--text); padding:8px 32px 8px 12px; border-radius:8px; font-size:12.5px;}
+  #searchInput:focus{outline:none; border-color:var(--accent);}
+  .search-clear{position:absolute; right:8px; top:50%; transform:translateY(-50%); background:none; border:none; color:var(--muted); cursor:pointer; font-size:14px; display:none;}
+  .search-clear.show{display:block;}
+  tbody tr.search-hit{outline:2px solid var(--accent2); outline-offset:-2px;}
+
+  /* Modal */
+  .overlay{position:fixed; inset:0; background:rgba(5,8,20,.65); display:none; align-items:center; justify-content:center; z-index:50;}
+  .overlay.show{display:flex;}
+  .modal{background:var(--panel); border:1px solid var(--border); border-radius:12px; width:420px; max-width:92vw; padding:20px;}
+  .modal h3{margin:0 0 4px; font-size:15px;}
+  .modal .ped{color:var(--muted); font-size:13px; margin-bottom:8px;}
+  .modal .ped b{color:var(--accent2); font-size:19px; font-weight:800;}
+  .time-info{display:flex; gap:14px; flex-wrap:wrap; margin-bottom:12px;}
+  .time-info .tchip{background:var(--panel2); border:1px solid var(--border); border-radius:7px; padding:5px 10px; font-size:11px; color:var(--muted);}
+  .time-info .tchip b{color:var(--text); font-size:12px; font-weight:700;}
+  .time-info .tchip.changed{border-color:var(--accent2);}
+  .time-info .tchip.changed b{color:var(--accent2);}
+  .modal-info{display:grid; grid-template-columns:1.3fr 1fr; gap:10px 14px; background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:12px 14px; margin-bottom:16px;}
+  .modal-info .item .k{color:var(--muted); font-size:10.5px; text-transform:uppercase; letter-spacing:.5px;}
+  .modal-info .item .v{font-size:13px; font-weight:600; margin-top:2px;}
+  .modal-info .item.highlight .k{color:#9db2ff;}
+  .modal-info .item.highlight .v{font-size:22px; font-weight:800; margin-top:3px;}
+  .modal-info .item.nf .v{color:#ffd166;}
+  .modal-info .item.vendedor .v{color:#22c3a6;}
+  .modal-info .item.vendedor .phone{font-size:11.5px; font-weight:600; color:var(--muted); margin-top:2px;}
+  .btn.whatsapp{background:#25D366; color:#08331c;}
+  .capture-extra{display:grid; grid-template-columns:1fr; gap:8px; background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:12px 14px; margin-top:10px;}
+  .capture-extra .item .k{color:var(--muted); font-size:10.5px; text-transform:uppercase; letter-spacing:.5px;}
+  .capture-extra .item .v{font-size:12.5px; font-weight:600; margin-top:2px; white-space:pre-wrap;}
+  .field{margin-bottom:12px;}
+  .field label{display:block; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; margin-bottom:5px;}
+  select, textarea{width:100%; background:var(--panel2); border:1px solid var(--border); color:var(--text); padding:8px; border-radius:7px; font-size:12.5px; font-family:inherit;}
+  textarea{min-height:60px; resize:vertical;}
+  .modal .actions{display:flex; justify-content:flex-end; gap:8px; margin-top:16px;}
+  .risk-banner{background:var(--red); border:1px solid var(--red-b); color:var(--red-t); padding:8px 10px; border-radius:8px; font-size:11.5px; margin-bottom:12px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Monitoramento de Entregas</h1>
+    <div class="sub">Grupo Horeca &middot; acompanhamento diário de status e ocorrências</div>
+    <div class="sub" id="syncStatus" style="margin-top:2px;">conectando ao servidor...</div>
+  </div>
+  <div class="row" style="display:flex; gap:8px;">
+    <button class="btn secondary" id="btnExportExcel">Exportar Excel</button>
+    <button class="btn secondary" id="btnExportPdf">Exportar PDF</button>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="eff-panel" style="margin-bottom:14px;">
+    <div class="eff-client-row" style="margin-bottom:0;">
+      <label>Cliente (Ogv) — pode selecionar vários, ou todos</label>
+      <div class="eff-client-chips" id="effClientChips"></div>
+    </div>
+  </div>
+
+  <div class="imports">
+    <div class="import-card">
+      <h3>Acompanhamento</h3>
+      <p>Importa a aba "Base" da planilha. Pode selecionar vários arquivos de uma vez — os dados são somados ao histórico já importado.</p>
+      <div class="row">
+        <input type="file" id="fileAcompanhamento" accept=".xlsx,.xlsm,.xls" multiple>
+        <span class="pill" id="pillAcompanhamento">0 registros</span>
+        <button class="btn danger small" id="btnExcluirAcompanhamento">EXCLUIR TUDO</button>
+      </div>
+      <div class="pill" id="pillVendedor" style="margin-top:8px; display:block; white-space:normal; line-height:1.5; width:fit-content; max-width:100%;">nenhum arquivo importado ainda</div>
+    </div>
+    <div class="import-card">
+      <h3>DRIVIN</h3>
+      <p>Reflete o status mais recente de trânsito — cada novo arquivo substitui o anterior (não acumula).</p>
+      <div class="row">
+        <input type="file" id="fileDrivin" accept=".xlsx,.xlsm,.xls">
+        <span class="pill" id="pillDrivin">0 registros</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="eff-panel">
+    <div class="eff-header">
+      <div class="eff-title">Eficiência por cliente</div>
+      <div class="eff-date" id="effDate"></div>
+    </div>
+    <div class="eff-areas" id="effAreas"></div>
+    <div class="eff-tables" id="effTables"></div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi total"><div class="label">Total</div><div class="value" id="kpiTotal">0</div></div>
+    <div class="kpi entregue"><div class="label">Entregues</div><div class="value" id="kpiEntregue">0</div></div>
+    <div class="kpi transito"><div class="label">Em trânsito</div><div class="value" id="kpiTransito">0</div></div>
+    <div class="kpi reentrega"><div class="label">Reentregar</div><div class="value" id="kpiReentrega">0</div></div>
+    <div class="kpi ocorrencia"><div class="label">Ocorrências</div><div class="value" id="kpiOcorrencia">0</div></div>
+    <div class="kpi cancelado"><div class="label">Canceladas</div><div class="value" id="kpiCancelado">0</div></div>
+    <div class="kpi taxa"><div class="label">Taxa de entrega</div><div class="value" id="kpiTaxa">0%</div></div>
+  </div>
+
+  <div class="filters">
+    <div class="filter-group">
+      <div class="ftitle">Status (tabela)</div>
+      <div class="chip-row" id="statusFilter"></div>
+    </div>
+    <div class="filter-group">
+      <div class="ftitle">Cliente (Ogv)</div>
+      <div class="chip-row" id="ogvFilter"></div>
+    </div>
+    <div class="filter-group">
+      <div class="ftitle">Data (Entrega)</div>
+      <input type="date" id="dateFilter">
+    </div>
+    <div class="filter-group">
+      <div class="ftitle">&nbsp;</div>
+      <button class="btn secondary small" id="btnClearFilters">Limpar filtros</button>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="search-wrap">
+      <input type="text" id="searchInput" placeholder="Buscar por NF, pedido, danfe... (separe vários com ; )">
+      <button class="search-clear" id="searchClear">&times;</button>
+    </div>
+    <div class="count" id="rowCount">0 pedidos</div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr id="theadRow"></tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div id="captureArea" style="background:var(--panel); padding-bottom:4px;">
+      <h3>Atualizar pedido</h3>
+      <div class="ped" id="modalPedido"></div>
+      <div class="time-info" id="modalTimeInfo"></div>
+      <div class="modal-info" id="modalInfo"></div>
+      <div class="capture-extra" id="modalBatchList" style="display:none; max-height:140px; overflow:auto;"></div>
+      <div class="capture-extra" id="captureExtra" style="display:none;">
+        <div class="item"><div class="k">Status</div><div class="v" id="captureStatus"></div></div>
+        <div class="item"><div class="k">Obs. de ocorrência</div><div class="v" id="captureOcorrencia"></div></div>
+        <div class="item"><div class="k">Responsável pela ocorrência</div><div class="v" id="captureResponsavel"></div></div>
+      </div>
+    </div>
+    <div class="risk-banner" id="modalRisk" style="display:none;"></div>
+    <div class="field">
+      <label>Status</label>
+      <select id="modalStatus">
+        <option>Entregue</option>
+        <option>Cancelado</option>
+        <option>Reentrega</option>
+        <option>Parcial</option>
+        <option>Trânsito</option>
+        <option>Ocorrência</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Obs. de ocorrência</label>
+      <textarea id="modalOcorrencia" placeholder="Descreva a ocorrência..."></textarea>
+    </div>
+    <div class="field">
+      <label>Responsável pela ocorrência</label>
+      <select id="modalResponsavel">
+        <option>-</option>
+        <option>Transporte</option>
+        <option>Comercial</option>
+        <option>Armazém</option>
+        <option>ADM</option>
+      </select>
+    </div>
+    <div class="actions">
+      <button class="btn secondary" id="btnModalCancel">Cancelar</button>
+      <button class="btn whatsapp" id="btnWhatsapp">Enviar Zap</button>
+      <button class="btn" id="btnModalSave">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- Firebase (sincronização entre PCs) ----------
+const firebaseConfig = {
+  apiKey: "AIzaSyA_myY3e8jHcv0LqhixoTtuiRpm72G8Aeg",
+  authDomain: "bella-mattina-ebfec.firebaseapp.com",
+  databaseURL: "https://bella-mattina-ebfec-default-rtdb.firebaseio.com",
+  projectId: "bella-mattina-ebfec",
+  storageBucket: "bella-mattina-ebfec.firebasestorage.app",
+  messagingSenderId: "395588813938",
+  appId: "1:395588813938:web:fd982b54bb3626f7e2eeeb"
+};
+let fbAvailable = true;
+let fbReady = false;
+let pedidosRef = null;
+let syncStatusEl = null;
+
+function setSyncStatus(msg, ok){
+  if(!syncStatusEl) syncStatusEl = document.getElementById('syncStatus');
+  if(!syncStatusEl) return;
+  syncStatusEl.textContent = msg;
+  syncStatusEl.style.color = ok ? 'var(--accent2)' : (ok === false ? '#e2445c' : 'var(--muted)');
+}
+
+try{
+  if(typeof firebase === 'undefined'){
+    throw new Error('SDK do Firebase não carregou (bloqueio de rede/firewall ou CDN indisponível)');
+  }
+  firebase.initializeApp(firebaseConfig);
+  const fbAuth = firebase.auth();
+  const fbDb = firebase.database();
+  // espaço próprio do painel de entregas, separado do app do restaurante
+  pedidosRef = fbDb.ref('monitoramentoEntregas/pedidos');
+
+  fbAuth.signInAnonymously().catch(err=>{
+    fbAvailable = false;
+    setSyncStatus('⚠ sem sincronização (falha de login no Firebase: ' + err.message + ') — funcionando só neste PC', false);
+  });
+
+  fbAuth.onAuthStateChanged(user=>{
+    if(user){
+      fbReady = true;
+      setSyncStatus('conectado — sincronizando em tempo real', true);
+      attachPedidosListener();
+    }
+  });
+} catch(err){
+  fbAvailable = false;
+  setSyncStatus('⚠ sem sincronização (' + err.message + ') — funcionando só neste PC', false);
+}
+
+function attachPedidosListener(){
+  if(!pedidosRef) return;
+  pedidosRef.on('value', snapshot=>{
+    const val = snapshot.val() || {};
+    acompanhamento = Object.values(val);
+    updatePills();
+    render();
+    renderEfficiencyDashboard();
+  }, err=>{
+    fbAvailable = false;
+    setSyncStatus('⚠ sem permissão de leitura no Firebase: ' + err.message + ' — funcionando só neste PC', false);
+  });
+}
+
+// grava/atualiza um ou mais pedidos: usa Firebase quando disponível, senão cai para memória local
+function syncPedidosBatch(rows){
+  if(!rows.length) return;
+  if(fbAvailable && pedidosRef){
+    const updates = {};
+    rows.forEach(r => { updates[r._id] = r; });
+    pedidosRef.update(updates).catch(err=>{
+      alert('Não foi possível gravar no Firebase: ' + err.message + '\n\nVerifique as regras do Realtime Database (caminho "monitoramentoEntregas"). Os dados foram salvos só neste PC por enquanto.');
+      setSyncStatus('⚠ erro ao gravar: ' + err.message, false);
+      localFallbackAdd(rows);
+    });
+  } else {
+    localFallbackAdd(rows);
+  }
+}
+function localFallbackAdd(rows){
+  const ids = new Set(acompanhamento.map(r=>r._id));
+  rows.forEach(r => { if(!ids.has(r._id)) acompanhamento.push(r); });
+  updatePills();
+  render();
+  renderEfficiencyDashboard();
+}
+
+// atualiza só alguns campos de um pedido: usa Firebase quando disponível, senão cai para memória local
+function syncPedidoFields(id, fields){
+  if(fbAvailable && pedidosRef){
+    const updates = {};
+    Object.entries(fields).forEach(([k,v]) => { updates[`${id}/${k}`] = v; });
+    pedidosRef.update(updates).catch(err=>{
+      alert('Não foi possível gravar no Firebase: ' + err.message + '\n\nVerifique as regras do Realtime Database (caminho "monitoramentoEntregas"). A alteração foi salva só neste PC por enquanto.');
+      setSyncStatus('⚠ erro ao gravar: ' + err.message, false);
+      localFallbackFields(id, fields);
+    });
+  } else {
+    localFallbackFields(id, fields);
+  }
+}
+function localFallbackFields(id, fields){
+  const row = acompanhamento.find(r=>r._id===id);
+  if(row){ Object.assign(row, fields); }
+  render();
+  renderEfficiencyDashboard();
+}
+
+// ---------- Column model ----------
+const BASE_COLS = ['EMISSÃO NF','ENTREGA','Pedido','Ogv','Danfe','Sold','Emissor','Endereço','Nº','CEP','Cidade','Peso','Valor','Obs. Entrega','car','Transp','Veíc','Placa','Ent','Curva','Cheg','Saida','Status','STATUS TMS','Código','Status da entrega','Ocorrência','OBS Adicional','Responsável','Vendedor/Supervisor'];
+
+// Display order per spec: Devolução first, then after Danfe -> Status, STATUS TMS, OBS Adicional, Ocorrência, Responsável, then rest in original order
+const DISPLAY_COLS = ['__SEL__','EMISSÃO NF','ENTREGA','Pedido','Ogv','Danfe','Sold','Obs. Entrega','Status','STATUS TMS','OBS Adicional','Ocorrência','Responsável','car','Transp','Emissor','Endereço','Nº','CEP','Cidade','Peso','Valor','Veíc','Placa','Ent','Curva','Cheg','Saida','Código','Status da entrega','Vendedor/Supervisor'];
+const COL_LABELS = {'__SEL__':'Select'};
+
+const OGV_GROUPS = {
+  'Linha Congelada': ['DBL','DBM','FCB1','PSO','OAK','ROO','BDL','BDM'],
+  'Linha Seca': ['BRN8','BRN2','BRN4','HBK']
+};
+const STATUS_LIST = ['Entregue','Cancelado','Reentrega','Parcial','Trânsito','Ocorrência'];
+const RESP_LIST = ['Transporte','Comercial','Armazém','ADM'];
+
+// ---------- State ----------
+let acompanhamento = []; // array of row objects (with _id, _batch)
+let drivinRows = [];
+let drivinCols = [];
+let activeStatusFilter = new Set(); // empty = all
+let activeOgvFilter = new Set(); // empty = all
+let dateFilterVal = '';
+let searchVal = '';
+let currentEditId = null;
+let currentEditIds = []; // usado no modo de atualização em lote (2+ pedidos selecionados)
+let selectedRows = new Set(); // ids selecionados via checkbox "Select"
+let batchCounter = 0;
+
+function uid(){ return 'r'+(Math.random().toString(36).slice(2))+Date.now(); }
+
+// normaliza variações de escrita do Status vindas da planilha (espaço, hífen, acento, maiúsculas)
+// para as opções fixas do painel: Entregue, Cancelado, Reentrega, Parcial, Trânsito, Ocorrência
+function normalizeStatus(raw){
+  if(!raw) return '';
+  const key = String(raw).trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // remove acentos
+    .replace(/[\s\-_]+/g,''); // remove espaços, hífens, underscores
+  const map = {
+    'entregue':'Entregue',
+    'cancelado':'Cancelado',
+    'reentrega':'Reentrega',
+    'parcial':'Parcial',
+    'transito':'Trânsito',
+    'emtransito':'Trânsito',
+    'ocorrencia':'Ocorrência'
+  };
+  return map[key] || String(raw).trim(); // se não reconhecer, mantém o texto original
+}
+
+// normaliza variações de escrita do Responsável para as 4 áreas fixas do painel
+function normalizeResponsavel(raw){
+  if(!raw) return '-';
+  const key = String(raw).trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[\s\-_]+/g,'');
+  const map = {
+    'comercial':'Comercial',
+    'armazem':'Armazém',
+    'transporte':'Transporte',
+    'adm':'ADM',
+    'administrativo':'ADM'
+  };
+  if(key === '' || key === '-') return '-';
+  return map[key] || String(raw).trim(); // se não reconhecer, mantém o texto original
+}
+
+function excelDateToStr(v){
+  if(v === null || v === undefined || v === '') return '';
+  if(v instanceof Date) return v.toISOString().slice(0,10);
+  if(typeof v === 'number'){
+    const d = XLSX.SSF.parse_date_code(v);
+    if(d) return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
+  }
+  return String(v);
+}
+
+// ---------- Import: Acompanhamento (Base sheet) ----------
+document.getElementById('fileAcompanhamento').addEventListener('change', async (e)=>{
+  const files = Array.from(e.target.files);
+  for(const f of files){
+    await importAcompanhamentoFile(f);
+  }
+  e.target.value = '';
+  refreshFilters();
+  render();
+});
+
+function normalizeHeader(v){
+  return String(v||'').trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // remove acentos
+    .replace(/\s+/g,' ');
+}
+
+function importAcompanhamentoFile(file){
+  return new Promise((resolve)=>{
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+      const wb = XLSX.read(ev.target.result, {type:'array', cellDates:true});
+      const sheetName = wb.SheetNames.find(n => n.trim().toLowerCase() === 'base') || wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
+      const json = XLSX.utils.sheet_to_json(ws, {defval:''});
+      const headerRow = XLSX.utils.sheet_to_json(ws, {header:1})[0] || [];
+      const lastColName = headerRow[headerRow.length - 1];
+      const isNewPhoneCol = lastColName && !BASE_COLS.includes(lastColName);
+
+      // mapa: nome normalizado do cabeçalho -> nome real da coluna no arquivo
+      const headerMap = {};
+      headerRow.forEach(h => { headerMap[normalizeHeader(h)] = h; });
+
+      const missingCols = [];
+      let phoneCount = 0;
+      batchCounter++;
+      const imported = json.map(row=>{
+        const obj = {_id: uid(), _batch: batchCounter, _file: file.name, _devolucao: null};
+        BASE_COLS.forEach(col=>{
+          let v = row[col];
+          if(v === undefined){
+            // tenta achar a coluna por nome aproximado (ignora acento/maiúscula/espaço extra)
+            const realKey = headerMap[normalizeHeader(col)];
+            if(realKey !== undefined) v = row[realKey];
+          }
+          if(col === 'EMISSÃO NF' || col === 'ENTREGA'){ v = excelDateToStr(v); }
+          obj[col] = (v === undefined) ? '' : v;
+        });
+        // editable fields fall back to imported values
+        obj.Status = normalizeStatus(obj['Status']);
+        obj['STATUS TMS'] = obj['STATUS TMS'] || '';
+        obj['Ocorrência'] = obj['Ocorrência'] || '';
+        obj['OBS Adicional'] = obj['OBS Adicional'] || '';
+        obj['Responsável'] = normalizeResponsavel(obj['Responsável']);
+        // telefone do vendedor: última coluna do arquivo importado
+        obj._vendorPhone = isNewPhoneCol ? String(row[lastColName] || '').trim() : '';
+        if(obj._vendorPhone) phoneCount++;
+        return obj;
+      });
+
+      // diagnóstico: quais colunas esperadas não foram encontradas no arquivo (nem exata nem aproximada)
+      BASE_COLS.forEach(col=>{
+        const foundExact = headerRow.includes(col);
+        const foundFuzzy = headerMap[normalizeHeader(col)] !== undefined;
+        if(!foundExact && !foundFuzzy) missingCols.push(col);
+      });
+
+      syncPedidosBatch(imported); // grava no Firebase — o listener atualiza "acompanhamento" e re-renderiza sozinho
+      const phoneMsg = isNewPhoneCol
+        ? `telefone lido da coluna "${lastColName}" · ${phoneCount} de ${imported.length} pedido(s) com telefone`
+        : `nenhuma coluna extra de telefone encontrada após "${BASE_COLS[BASE_COLS.length-1]}" neste arquivo`;
+      vendorSheetStatus = missingCols.length
+        ? `${phoneMsg} · ⚠ colunas não encontradas no arquivo: ${missingCols.join(', ')} (cabeçalhos lidos: ${headerRow.join(', ')})`
+        : phoneMsg;
+      updatePills();
+      resolve();
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+
+document.getElementById('btnExcluirAcompanhamento').addEventListener('click', ()=>{
+  if(!confirm('Excluir TODAS as bases de Acompanhamento já importadas? Isso apaga para todos os PCs conectados.')) return;
+  if(fbAvailable && pedidosRef){
+    pedidosRef.remove().catch(err=>{
+      alert('Não foi possível excluir no Firebase: ' + err.message);
+    }); // o listener zera "acompanhamento" e re-renderiza sozinho
+  } else {
+    acompanhamento = [];
+    render();
+    renderEfficiencyDashboard();
+  }
+  batchCounter = 0;
+  refreshFilters();
+});
+
+// ---------- Import: DRIVIN (replaces) ----------
+document.getElementById('fileDrivin').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev)=>{
+    const wb = XLSX.read(ev.target.result, {type:'array', cellDates:true});
+    const sheetName = wb.SheetNames.find(n=>n.trim().toLowerCase()==='base') || wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
+    const json = XLSX.utils.sheet_to_json(ws, {defval:''});
+    drivinRows = json;
+    drivinCols = json.length ? Object.keys(json[0]) : [];
+    updatePills();
+    crossReferenceDrivin();
+    render();
+    renderEfficiencyDashboard();
+  };
+  reader.readAsArrayBuffer(file);
+  e.target.value = '';
+});
+
+function findCol(cols, ...candidates){
+  for(const c of cols){
+    const lc = c.toLowerCase();
+    for(const cand of candidates){
+      if(lc.includes(cand)) return c;
+    }
+  }
+  return null;
+}
+
+// ---------- Vendedor -> Telefone (lido da última coluna do arquivo) ----------
+let vendorSheetStatus = 'nenhum arquivo de Acompanhamento importado ainda';
+
+function formatPhoneBR(raw){
+  if(!raw) return '';
+  const digits = String(raw).replace(/\D/g,'');
+  if(digits.length === 11) return `(${digits.slice(0,2)}) ${digits.slice(2,7)}-${digits.slice(7)}`;
+  if(digits.length === 10) return `(${digits.slice(0,2)}) ${digits.slice(2,6)}-${digits.slice(6)}`;
+  return raw;
+}
+function phoneDigitsBR(raw){
+  if(!raw) return '';
+  let digits = String(raw).replace(/\D/g,'');
+  if(digits.length === 10 || digits.length === 11) digits = '55' + digits; // DDI Brasil
+  return digits;
+}
+
+function crossReferenceDrivin(){
+  if(!drivinRows.length) return;
+  const pedidoCol = findCol(drivinCols, 'pedido', 'order', 'código do pedido');
+  const estadoCol = findCol(drivinCols, 'estado de pedido', 'estado');
+  const ifdCol = findCol(drivinCols, 'ifd');
+  if(!pedidoCol || !estadoCol) return; // can't cross-reference without these
+
+  const drivinMap = {};
+  drivinRows.forEach(r=>{
+    const key = String(r[pedidoCol]).trim();
+    drivinMap[key] = r;
+  });
+
+  const changedRows = [];
+  acompanhamento.forEach(row=>{
+    const key = String(row['Pedido']).trim();
+    const d = drivinMap[key];
+    if(!d) return;
+    const estado = String(d[estadoCol] || '').trim().toLowerCase();
+    const ifd = ifdCol ? String(d[ifdCol] || '').trim().toLowerCase() : '';
+    let mudou = false;
+    if(estado === 'aprovado' && ifd === 'sim'){
+      if(row['STATUS TMS'] !== 'Entregue' || row['Status'] !== 'Entregue') mudou = true;
+      row['STATUS TMS'] = 'Entregue';
+      row['Status'] = 'Entregue';
+    } else if(estado === 'rejeitado'){
+      if(row['STATUS TMS'] !== 'Rejeitado') mudou = true;
+      row['STATUS TMS'] = 'Rejeitado';
+    } else if(estado === 'pendente'){
+      if(row['STATUS TMS'] !== 'Em Trânsito') mudou = true;
+      row['STATUS TMS'] = 'Em Trânsito';
+    }
+    if(mudou) changedRows.push(row);
+  });
+  if(changedRows.length) syncPedidosBatch(changedRows); // grava as mudanças no Firebase para todos os PCs
+}
+
+function updatePills(){
+  document.getElementById('pillAcompanhamento').textContent = acompanhamento.length + ' registros';
+  document.getElementById('pillDrivin').textContent = drivinRows.length + ' registros';
+  document.getElementById('pillVendedor').textContent = vendorSheetStatus;
+}
+
+// ---------- Risk calc ----------
+function daysBetween(d1, d2){
+  if(!d1 || !d2) return null;
+  const a = new Date(d1), b = new Date(d2);
+  if(isNaN(a) || isNaN(b)) return null;
+  return Math.round((b - a) / (1000*60*60*24));
+}
+
+function computeRisk(row){
+  const status = row['Status'];
+  if(status !== 'Reentrega' && status !== 'Cancelado') return false;
+  const diff = daysBetween(row['EMISSÃO NF'], row['ENTREGA']);
+  if(diff === null) return false;
+  return diff >= 4;
+}
+
+// ---------- Filters UI ----------
+function refreshFilters(){
+  // Status chips
+  const sf = document.getElementById('statusFilter');
+  sf.innerHTML = '';
+  STATUS_LIST.forEach(s=>{
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (activeStatusFilter.has(s) ? ' active' : '');
+    chip.textContent = s;
+    chip.onclick = ()=>{
+      if(activeStatusFilter.has(s)) activeStatusFilter.delete(s); else activeStatusFilter.add(s);
+      refreshFilters(); render();
+    };
+    sf.appendChild(chip);
+  });
+
+  // OGV chips (grouped)
+  const of = document.getElementById('ogvFilter');
+  of.innerHTML = '';
+  Object.entries(OGV_GROUPS).forEach(([group, codes])=>{
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (activeOgvFilter.has(group) ? ' active' : '');
+    chip.textContent = group;
+    chip.title = codes.join(', ');
+    chip.onclick = ()=>{
+      if(activeOgvFilter.has(group)) activeOgvFilter.delete(group); else activeOgvFilter.add(group);
+      effSelectedOgv.clear(); // usar o filtro por grupo limpa a seleção feita no painel de Eficiência
+      renderEfficiencyDashboard(); // já chama refreshFilters() e render() internamente
+    };
+    of.appendChild(chip);
+  });
+}
+
+document.getElementById('dateFilter').addEventListener('change', (e)=>{
+  dateFilterVal = e.target.value;
+  render();
+});
+document.getElementById('btnClearFilters').addEventListener('click', ()=>{
+  activeStatusFilter.clear();
+  activeOgvFilter.clear();
+  dateFilterVal = '';
+  document.getElementById('dateFilter').value = '';
+  searchVal = '';
+  document.getElementById('searchInput').value = '';
+  document.getElementById('searchClear').classList.remove('show');
+  refreshFilters();
+  render();
+});
+
+document.getElementById('searchInput').addEventListener('input', (e)=>{
+  searchVal = e.target.value.trim();
+  document.getElementById('searchClear').classList.toggle('show', !!searchVal);
+  render();
+});
+document.getElementById('searchClear').addEventListener('click', ()=>{
+  searchVal = '';
+  document.getElementById('searchInput').value = '';
+  document.getElementById('searchClear').classList.remove('show');
+  render();
+  document.getElementById('searchInput').focus();
+});
+
+// rows filtered by OGV + Date only (used for KPIs, "real" delivery rate)
+let directOgvFilter = new Set(); // controlado pela seleção de cliente no painel de Eficiência
+
+function kpiScopeRows(){
+  return acompanhamento.filter(row=>{
+    if(directOgvFilter.size){
+      // seleção vinda do painel "Eficiência por cliente" tem prioridade
+      if(!directOgvFilter.has(String(row['Ogv']||'').trim())) return false;
+    } else if(activeOgvFilter.size){
+      const codes = [...activeOgvFilter].flatMap(g=>OGV_GROUPS[g]);
+      if(!codes.includes(String(row['Ogv']).trim())) return false;
+    }
+    if(dateFilterVal){
+      if((row['ENTREGA']||'') !== dateFilterVal) return false;
+    }
+    return true;
+  });
+}
+
+// rows filtered by OGV + Date + Status (used for the table)
+function tableScopeRows(){
+  return kpiScopeRows().filter(row=>{
+    if(activeStatusFilter.size && !activeStatusFilter.has(row['Status'])) return false;
+    if(searchVal){
+      // permite vários termos separados por ";" (ex: "275636; 258465") — traz linhas que batem com qualquer um deles
+      const terms = searchVal.split(';').map(t=>t.trim().toLowerCase()).filter(Boolean);
+      const hit = terms.some(term =>
+        BASE_COLS.some(col=>{
+          const v = row[col];
+          return v !== undefined && v !== null && String(v).toLowerCase().includes(term);
+        })
+      );
+      if(!hit) return false;
+    }
+    return true;
+  });
+}
+
+// ---------- Render ----------
+function renderHeader(){
+  const tr = document.getElementById('theadRow');
+  tr.innerHTML = '';
+  DISPLAY_COLS.forEach(c=>{
+    const th = document.createElement('th');
+    th.textContent = COL_LABELS[c] || c;
+    tr.appendChild(th);
+  });
+}
+
+function statusBadgeClass(s){
+  switch(s){
+    case 'Entregue': return 'b-entregue';
+    case 'Cancelado': return 'b-cancelado';
+    case 'Reentrega': return 'b-reentrega';
+    case 'Parcial': return 'b-parcial';
+    case 'Trânsito': return 'b-transito';
+    case 'Ocorrência': return 'b-ocorrencia';
+    default: return '';
+  }
+}
+
+function statusTmsBadgeClass(s){
+  const key = String(s||'').trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[\s\-_]+/g,'');
+  if(key === 'entregue') return 'b-tms-entregue';
+  if(key === 'emtransito' || key === 'transito') return 'b-tms-transito';
+  if(key === 'rejeitado') return 'b-tms-rejeitado';
+  return '';
+}
+
+// ---------- Eficiência por cliente ----------
+const AREAS = ['Comercial','Armazém','Transporte','ADM'];
+const AREA_EMOJI = {calmo:'😴', medio:'😐', alto:'😟'};
+let effSelectedOgv = new Set(); // vazio = Todos
+
+function setEffDate(){
+  const now = new Date();
+  const dia = now.toLocaleDateString('pt-BR', {weekday:'long'});
+  document.getElementById('effDate').innerHTML = `${dia}<b>${now.toLocaleDateString('pt-BR')}</b>`;
+}
+
+function populateEffClientChips(){
+  const box = document.getElementById('effClientChips');
+  const codes = [...new Set(acompanhamento.map(r=>String(r['Ogv']||'').trim()).filter(Boolean))].sort();
+  // remove da seleção códigos que não existem mais na base
+  effSelectedOgv = new Set([...effSelectedOgv].filter(c => codes.includes(c)));
+
+  const allChip = document.createElement('div');
+  allChip.className = 'chip all' + (effSelectedOgv.size === 0 ? ' active' : '');
+  allChip.textContent = 'Todos';
+  allChip.onclick = ()=>{ effSelectedOgv.clear(); renderEfficiencyDashboard(); };
+
+  box.innerHTML = '';
+  box.appendChild(allChip);
+  codes.forEach(c=>{
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (effSelectedOgv.has(c) ? ' active' : '');
+    chip.textContent = c;
+    chip.onclick = ()=>{
+      if(effSelectedOgv.has(c)) effSelectedOgv.delete(c); else effSelectedOgv.add(c);
+      renderEfficiencyDashboard();
+    };
+    box.appendChild(chip);
+  });
+}
+
+function renderEfficiencyDashboard(){
+  setEffDate();
+  populateEffClientChips();
+  const rows = effSelectedOgv.size
+    ? acompanhamento.filter(r => effSelectedOgv.has(String(r['Ogv']||'').trim()))
+    : acompanhamento.slice(); // "Todos"
+
+  const CATS = {
+    'Cancelado': r => r['Status'] === 'Cancelado',
+    'Re entrega': r => r['Status'] === 'Reentrega',
+    'Demais Ocorrências': r => r['Status'] === 'Ocorrência' || r['Status'] === 'Parcial'
+  };
+
+  // conta por área x categoria (inclui "Não atribuído" para o que ainda não tem Responsável definido)
+  const AREAS_TABLE = [...AREAS, 'Não atribuído'];
+  const counts = {}; // counts[area][cat] = n
+  AREAS_TABLE.forEach(a => counts[a] = {'Cancelado':0, 'Re entrega':0, 'Demais Ocorrências':0});
+  rows.forEach(r=>{
+    const area = AREAS.includes(r['Responsável']) ? r['Responsável'] : 'Não atribuído';
+    Object.entries(CATS).forEach(([cat, fn])=>{
+      if(fn(r)) counts[area][cat]++;
+    });
+  });
+
+  const catTotals = {};
+  Object.keys(CATS).forEach(cat=>{
+    catTotals[cat] = AREAS_TABLE.reduce((s,a)=> s + counts[a][cat], 0);
+  });
+
+  // ---- blocos de área (nível de eficiência) ----
+  const areaClass = {'Comercial':'comercial','Armazém':'armazem','Transporte':'transporte','ADM':'adm'};
+  const areasBox = document.getElementById('effAreas');
+  areasBox.innerHTML = AREAS.map(a=>{
+    const total = counts[a]['Cancelado'] + counts[a]['Re entrega'] + counts[a]['Demais Ocorrências'];
+    const emoji = total === 0 ? AREA_EMOJI.calmo : (total <= 3 ? AREA_EMOJI.medio : AREA_EMOJI.alto);
+    return `<div class="eff-area ${areaClass[a]}">
+      <span class="emoji">${emoji}</span>
+      <div class="label">${a}</div>
+      <div class="count">${total} ocorrência(s)</div>
+    </div>`;
+  }).join('');
+
+  // ---- tabelas por categoria ----
+  const tablesBox = document.getElementById('effTables');
+  tablesBox.innerHTML = Object.keys(CATS).map(cat=>{
+    const total = catTotals[cat];
+    const rowsHtml = AREAS_TABLE.map(a=>{
+      const n = counts[a][cat];
+      const pct = total ? (n/total*100) : 0;
+      return `<tr><td>${a}</td><td>${n}</td><td>${pct.toFixed(3)}%</td></tr>`;
+    }).join('');
+    return `<div class="eff-table">
+      <div class="eff-t-title">${cat} (${total})</div>
+      <table>
+        <thead><tr><th>Área</th><th>Qtd</th><th>% Repres.</th></tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>`;
+  }).join('');
+
+  // sincroniza a seleção de cliente com a tabela principal (parte inferior)
+  directOgvFilter = new Set(effSelectedOgv);
+  if(directOgvFilter.size) activeOgvFilter.clear(); // evita conflito visual com os chips de grupo (Linha Congelada/Seca)
+  refreshFilters();
+  render();
+}
+
+function render(){
+  updateKpis();
+  const rows = tableScopeRows();
+  document.getElementById('rowCount').textContent = rows.length + ' pedido(s)';
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = '';
+
+  rows.forEach(row=>{
+    const risk = computeRisk(row);
+    const tr = document.createElement('tr');
+    if(risk) tr.classList.add('risk');
+    if(selectedRows.has(row._id)) tr.classList.add('devsim'); // reaproveita destaque azul p/ linha selecionada
+    if(searchVal) tr.classList.add('search-hit');
+
+    DISPLAY_COLS.forEach(col=>{
+      const td = document.createElement('td');
+      if(col === '__SEL__'){
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = selectedRows.has(row._id);
+        cb.style.cursor = 'pointer';
+        cb.style.width = '16px';
+        cb.style.height = '16px';
+        cb.onclick = (ev)=>{
+          ev.stopPropagation();
+          if(cb.checked) selectedRows.add(row._id); else selectedRows.delete(row._id);
+          render();
+        };
+        td.appendChild(cb);
+        if(risk){ const a = document.createElement('span'); a.className='alert-icon'; a.title='Risco de cancelamento de NF: retornar ao CD até o dia seguinte'; a.textContent=' ⚠'; td.appendChild(a); }
+      } else if(col === 'Status'){
+        const span = document.createElement('span');
+        span.className = 'badge ' + statusBadgeClass(row['Status']);
+        span.textContent = row['Status'] || '—';
+        td.appendChild(span);
+      } else if(col === 'STATUS TMS'){
+        const tms = row['STATUS TMS'];
+        if(tms){
+          const span = document.createElement('span');
+          span.className = 'badge ' + statusTmsBadgeClass(tms);
+          span.textContent = tms;
+          td.appendChild(span);
+        } else {
+          td.textContent = '—';
+        }
+      } else {
+        const v = row[col];
+        td.textContent = (v === '' || v === undefined || v === null) ? '—' : v;
+      }
+      tr.appendChild(td);
+    });
+
+    tr.addEventListener('click', ()=> openModal(row._id));
+    tbody.appendChild(tr);
+  });
+
+  if(searchVal && tbody.firstChild){
+    tbody.firstChild.scrollIntoView({block:'center', behavior:'smooth'});
+  }
+}
+
+function updateKpis(){
+  const scope = kpiScopeRows();
+  const total = scope.length;
+  const entregue = scope.filter(r=>r['Status']==='Entregue').length;
+  const transito = scope.filter(r=>r['Status']==='Trânsito').length;
+  const reentrega = scope.filter(r=>r['Status']==='Reentrega').length;
+  const ocorrencia = scope.filter(r=>r['Status']==='Ocorrência').length;
+  const cancelado = scope.filter(r=>r['Status']==='Cancelado').length;
+  const taxa = total ? Math.round((entregue/total)*1000)/10 : 0;
+
+  document.getElementById('kpiTotal').textContent = total;
+  document.getElementById('kpiEntregue').textContent = entregue;
+  document.getElementById('kpiTransito').textContent = transito;
+  document.getElementById('kpiReentrega').textContent = reentrega;
+  document.getElementById('kpiOcorrencia').textContent = ocorrencia;
+  document.getElementById('kpiCancelado').textContent = cancelado;
+  document.getElementById('kpiTaxa').textContent = taxa + '%';
+}
+
+// ---------- Modal ----------
+function fmtTime(d){
+  if(!d) return null;
+  return new Date(d).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+}
+
+function openModal(id){
+  const isBatch = selectedRows.size >= 2;
+  currentEditId = id;
+  currentEditIds = isBatch ? [...selectedRows] : [id];
+
+  if(isBatch){
+    const batchRows = currentEditIds.map(rid => acompanhamento.find(r=>r._id===rid)).filter(Boolean);
+    document.getElementById('modalPedido').innerHTML = `<b style="color:var(--accent2); font-size:19px;">${batchRows.length} pedidos selecionados</b>`;
+    document.getElementById('modalTimeInfo').innerHTML = '';
+    document.getElementById('modalInfo').style.display = 'none';
+
+    const listBox = document.getElementById('modalBatchList');
+    listBox.style.display = 'block';
+    listBox.innerHTML = batchRows.map(r=>
+      `<div class="item"><div class="k">Pedido ${r['Pedido']}</div><div class="v" style="font-size:12px; font-weight:600;">NF ${r['Danfe']||'—'} · ${r['Emissor']||''}</div></div>`
+    ).join('');
+
+    document.getElementById('btnWhatsapp').style.display = 'none';
+    document.getElementById('modalStatus').value = 'Trânsito';
+    document.getElementById('modalOcorrencia').value = '';
+    document.getElementById('modalResponsavel').value = '-';
+
+    const anyRisk = batchRows.some(computeRisk);
+    const banner = document.getElementById('modalRisk');
+    if(anyRisk){
+      banner.style.display='block';
+      banner.textContent = '⚠ Um ou mais pedidos selecionados têm risco de cancelamento de NF.';
+    } else {
+      banner.style.display='none';
+    }
+    document.getElementById('overlay').classList.add('show');
+    return;
+  }
+
+  document.getElementById('modalInfo').style.display = '';
+  document.getElementById('modalBatchList').style.display = 'none';
+
+  const row = acompanhamento.find(r=>r._id===id);
+  if(!row) return;
+
+  row._openedAt = new Date(); // registra o momento em que o status foi aberto
+
+  document.getElementById('modalPedido').innerHTML = `Pedido <b>${row['Pedido']}</b> · ${row['Emissor']||''}`;
+
+  const timeChips = [];
+  timeChips.push(`<div class="tchip">Aberto às <b>${fmtTime(row._openedAt)}</b></div>`);
+  if(row._statusChangedAt){
+    timeChips.push(`<div class="tchip changed">Status alterado às <b>${fmtTime(row._statusChangedAt)}</b></div>`);
+  }
+  document.getElementById('modalTimeInfo').innerHTML = timeChips.join('');
+
+  document.getElementById('modalInfo').innerHTML = [
+    ['NF', row['Danfe'] || '—', 'nf highlight'],
+    ['Vendedor/Supervisor', row['Vendedor/Supervisor'] || '—', 'vendedor highlight'],
+    ['Ogv', row['Ogv'] || '—', ''],
+    ['Cidade', row['Cidade'] || '—', '']
+  ].map(([k,v,cls])=>`<div class="item ${cls}"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+
+  // telefone do vendedor logo abaixo do nome
+  const phoneRaw = row._vendorPhone;
+  if(phoneRaw){
+    const vendItem = document.querySelector('#modalInfo .item.vendedor');
+    if(vendItem){
+      const phoneEl = document.createElement('div');
+      phoneEl.className = 'phone';
+      phoneEl.textContent = formatPhoneBR(phoneRaw);
+      vendItem.appendChild(phoneEl);
+    }
+  }
+  document.getElementById('btnWhatsapp').style.display = 'inline-block';
+  document.getElementById('modalStatus').value = row['Status'] || 'Trânsito';
+  document.getElementById('modalOcorrencia').value = row['Ocorrência'] || '';
+  document.getElementById('modalResponsavel').value = (RESP_LIST.includes(row['Responsável']) ? row['Responsável'] : '-');
+
+  const risk = computeRisk(row);
+  const banner = document.getElementById('modalRisk');
+  if(risk){
+    banner.style.display='block';
+    banner.textContent = '⚠ Risco de cancelamento de NF — pedido deve retornar ao CD até o dia seguinte.';
+  } else {
+    banner.style.display='none';
+  }
+  document.getElementById('overlay').classList.add('show');
+}
+
+document.getElementById('btnModalCancel').onclick = ()=>{
+  document.getElementById('overlay').classList.remove('show');
+};
+document.getElementById('overlay').addEventListener('click', (e)=>{
+  if(e.target.id === 'overlay') document.getElementById('overlay').classList.remove('show');
+});
+document.getElementById('btnWhatsapp').onclick = async ()=>{
+  const row = acompanhamento.find(r=>r._id===currentEditId);
+  if(!row) return;
+  const phoneRaw = row._vendorPhone;
+  if(!phoneRaw){ alert('Telefone do vendedor não encontrado nesta linha.'); return; }
+  const digits = phoneDigitsBR(phoneRaw);
+  const legenda = `Pedido ${row['Pedido']} · Status: ${row['Status']||'—'}`;
+
+  const btn = document.getElementById('btnWhatsapp');
+  const originalLabel = btn.textContent;
+  btn.textContent = 'Gerando print...';
+  btn.disabled = true;
+
+  // preenche o bloco extra (Status/Ocorrência/Responsável) com os valores atuais da tela
+  const captureExtra = document.getElementById('captureExtra');
+  document.getElementById('captureStatus').textContent = document.getElementById('modalStatus').value || '—';
+  document.getElementById('captureOcorrencia').textContent = document.getElementById('modalOcorrencia').value || '—';
+  document.getElementById('captureResponsavel').textContent = document.getElementById('modalResponsavel').value || '—';
+  captureExtra.style.display = 'grid';
+
+  try{
+    const target = document.getElementById('captureArea');
+    const canvas = await html2canvas(target, {backgroundColor: '#151f38', scale: 2});
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+    const file = new File([blob], `pedido-${row['Pedido']}.png`, {type:'image/png'});
+
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      // Web Share API: abre o seletor nativo já com a imagem anexada — no celular dá pra escolher o WhatsApp direto
+      await navigator.share({files:[file], text: legenda, title: 'Atualizar pedido'});
+    } else {
+      // Fallback: baixa o print e abre o WhatsApp com o número já preenchido para anexar manualmente
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `pedido-${row['Pedido']}.png`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      alert('Print baixado. Seu navegador não permite anexar a imagem direto pelo link — o WhatsApp vai abrir com o número certo, é só anexar o arquivo baixado na conversa.');
+      window.open(`https://wa.me/${digits}?text=${encodeURIComponent(legenda)}`, '_blank');
+    }
+  } catch(err){
+    alert('Não foi possível gerar o print automaticamente. Tente novamente.');
+  } finally{
+    captureExtra.style.display = 'none';
+    btn.textContent = originalLabel;
+    btn.disabled = false;
+  }
+};
+
+document.getElementById('btnModalSave').onclick = ()=>{
+  const newStatus = document.getElementById('modalStatus').value;
+  const newOcorrencia = document.getElementById('modalOcorrencia').value;
+  const newResponsavel = document.getElementById('modalResponsavel').value;
+
+  currentEditIds.forEach(id=>{
+    const row = acompanhamento.find(r=>r._id===id);
+    if(!row) return;
+    const fields = {
+      'Status': newStatus,
+      'Ocorrência': newOcorrencia,
+      'Responsável': newResponsavel
+    };
+    if(newStatus !== row['Status']){
+      fields['_statusChangedAt'] = new Date().toISOString();
+    }
+    syncPedidoFields(id, fields); // grava no Firebase — o listener atualiza a tela de todos os PCs
+  });
+
+  selectedRows.clear(); // limpa a seleção depois de aplicar
+  document.getElementById('overlay').classList.remove('show');
+};
+
+// ---------- Export ----------
+function buildExportMatrix(){
+  const rows = tableScopeRows();
+  const header = DISPLAY_COLS.map(c => COL_LABELS[c] || c);
+  const body = rows.map(row => DISPLAY_COLS.map(col=>{
+    if(col==='__SEL__') return '';
+    return row[col] ?? '';
+  }));
+  return {header, body};
+}
+
+document.getElementById('btnExportExcel').onclick = ()=>{
+  const {header, body} = buildExportMatrix();
+  const ws = XLSX.utils.aoa_to_sheet([header, ...body]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Monitoramento');
+  XLSX.writeFile(wb, 'Monitoramento de Entregas.xlsx');
+};
+
+document.getElementById('btnExportPdf').onclick = ()=>{
+  const {header, body} = buildExportMatrix();
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({orientation:'landscape', unit:'pt', format:'a3'});
+  doc.setFontSize(14);
+  doc.text('Monitoramento de Entregas', 24, 28);
+  doc.autoTable({
+    head:[header], body, startY:40, styles:{fontSize:6}, headStyles:{fillColor:[30,42,80]}
+  });
+  doc.save('Monitoramento de Entregas.pdf');
+};
+
+// ---------- Init ----------
+renderHeader();
+refreshFilters();
+render();
+renderEfficiencyDashboard();
+</script>
+</body>
+</html>
