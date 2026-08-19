@@ -451,7 +451,7 @@ function fromFbRow(row){
 }
 
 // Display order per spec: Devolução first, then after Danfe -> Status, STATUS TMS, OBS Adicional, Ocorrência, Responsável, then rest in original order
-const DISPLAY_COLS = ['__SEL__','EMISSÃO NF','ENTREGA','Pedido','Ogv','Danfe','Sold','Obs. Entrega','Status','STATUS TMS','OBS Adicional','Ocorrência','Responsável','car','Transp','Emissor','Endereço','Nº','CEP','Cidade','Peso','Valor','Veíc','Placa','Ent','Curva','Cheg','Saida','Código','Status da entrega','Vendedor/Supervisor'];
+const DISPLAY_COLS = ['__SEL__','EMISSÃO NF','ENTREGA','Pedido','Ogv','Danfe','Emissor','Sold','Obs. Entrega','Status','STATUS TMS','OBS Adicional','Ocorrência','Responsável','car','Transp','Endereço','Nº','CEP','Cidade','Peso','Valor','Veíc','Placa','Ent','Curva','Cheg','Saida','Código','Status da entrega','Vendedor/Supervisor'];
 const COL_LABELS = {'__SEL__':'Select'};
 
 const OGV_GROUPS = {
@@ -571,6 +571,12 @@ function importAcompanhamentoFile(file){
               const realKey = headerMap[normalizeHeader(col)];
               if(realKey !== undefined) v = row[realKey];
             }
+            if(v === undefined){
+              // último recurso: cabeçalho que COMECE com o nome esperado (ex: "Peso (Kg)" bate com "Peso")
+              const normCol = normalizeHeader(col);
+              const partialKey = headerRow.find(h => h && normalizeHeader(h).startsWith(normCol));
+              if(partialKey !== undefined) v = row[partialKey];
+            }
             if(col === 'EMISSÃO NF' || col === 'ENTREGA'){ v = excelDateToStr(v); }
             obj[col] = (v === undefined) ? '' : v;
           });
@@ -590,11 +596,13 @@ function importAcompanhamentoFile(file){
           alert(`O arquivo foi lido, mas nenhuma linha foi encontrada na aba "${sheetName}". Confira se essa é mesmo a aba com os dados (abas do arquivo: ${wb.SheetNames.join(', ')}).`);
         }
 
-        // diagnóstico: quais colunas esperadas não foram encontradas no arquivo (nem exata nem aproximada)
+        // diagnóstico: quais colunas esperadas não foram encontradas no arquivo (nem exata, aproximada ou parcial)
         BASE_COLS.forEach(col=>{
           const foundExact = headerRow.includes(col);
           const foundFuzzy = headerMap[normalizeHeader(col)] !== undefined;
-          if(!foundExact && !foundFuzzy) missingCols.push(col);
+          const normCol = normalizeHeader(col);
+          const foundPartial = headerRow.some(h => h && normalizeHeader(h).startsWith(normCol));
+          if(!foundExact && !foundFuzzy && !foundPartial) missingCols.push(col);
         });
 
         syncPedidosBatch(imported); // grava no Firebase — o listener atualiza "acompanhamento" e re-renderiza sozinho
