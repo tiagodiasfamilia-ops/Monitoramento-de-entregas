@@ -145,6 +145,10 @@
   .modal h3{margin:0 0 4px; font-size:15px;}
   .modal .ped{color:var(--muted); font-size:13px; margin-bottom:8px;}
   .modal .ped b{color:var(--accent2); font-size:19px; font-weight:800;}
+  .modal .ped .emissor-name{display:block; color:#fff; font-size:22px; font-weight:800; margin-top:4px; line-height:1.25;}
+  .modal-sold{margin-bottom:12px;}
+  .modal-sold .k{color:var(--muted); font-size:10.5px; text-transform:uppercase; letter-spacing:.5px;}
+  .modal-sold .v{font-size:20px; font-weight:800; color:#ffd166; margin-top:2px;}
   .time-info{display:flex; gap:14px; flex-wrap:wrap; margin-bottom:12px;}
   .time-info .tchip{background:var(--panel2); border:1px solid var(--border); border-radius:7px; padding:5px 10px; font-size:11px; color:var(--muted);}
   .time-info .tchip b{color:var(--text); font-size:12px; font-weight:700;}
@@ -162,6 +166,9 @@
   .capture-extra{display:grid; grid-template-columns:1fr; gap:8px; background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:12px 14px; margin-top:10px;}
   .capture-extra .item .k{color:var(--muted); font-size:10.5px; text-transform:uppercase; letter-spacing:.5px;}
   .capture-extra .item .v{font-size:12.5px; font-weight:600; margin-top:2px; white-space:pre-wrap;}
+  .modal-obs-entrega{margin-top:10px;}
+  .modal-obs-entrega .k{color:var(--muted); font-size:10.5px; text-transform:uppercase; letter-spacing:.5px; margin-bottom:5px;}
+  .modal-obs-entrega .box{border:1px solid var(--accent2); border-radius:8px; padding:9px 12px; font-size:12px; color:var(--text); background:var(--panel2); white-space:pre-wrap;}
   .field{margin-bottom:12px;}
   .field label{display:block; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; margin-bottom:5px;}
   select, textarea{width:100%; background:var(--panel2); border:1px solid var(--border); color:var(--text); padding:8px; border-radius:7px; font-size:12.5px; font-family:inherit;}
@@ -276,12 +283,17 @@
       <h3>Atualizar pedido</h3>
       <div class="ped" id="modalPedido"></div>
       <div class="time-info" id="modalTimeInfo"></div>
+      <div class="modal-sold" id="modalSold"></div>
       <div class="modal-info" id="modalInfo"></div>
       <div class="capture-extra" id="modalBatchList" style="display:none; max-height:140px; overflow:auto;"></div>
       <div class="capture-extra" id="captureExtra" style="display:none;">
         <div class="item"><div class="k">Status</div><div class="v" id="captureStatus"></div></div>
         <div class="item"><div class="k">Obs. de ocorrência</div><div class="v" id="captureOcorrencia"></div></div>
         <div class="item"><div class="k">Responsável pela ocorrência</div><div class="v" id="captureResponsavel"></div></div>
+      </div>
+      <div class="modal-obs-entrega" id="modalObsEntrega" style="display:none;">
+        <div class="k">Obs. Entrega</div>
+        <div class="box" id="modalObsEntregaBox"></div>
       </div>
     </div>
     <div class="risk-banner" id="modalRisk" style="display:none;"></div>
@@ -1093,7 +1105,9 @@ function openModal(id){
     const batchRows = currentEditIds.map(rid => acompanhamento.find(r=>r._id===rid)).filter(Boolean);
     document.getElementById('modalPedido').innerHTML = `<b style="color:var(--accent2); font-size:19px;">${batchRows.length} pedidos selecionados</b>`;
     document.getElementById('modalTimeInfo').innerHTML = '';
+    document.getElementById('modalSold').innerHTML = '';
     document.getElementById('modalInfo').style.display = 'none';
+    document.getElementById('modalObsEntrega').style.display = 'none';
 
     const listBox = document.getElementById('modalBatchList');
     listBox.style.display = 'block';
@@ -1126,7 +1140,9 @@ function openModal(id){
 
   row._openedAt = new Date(); // registra o momento em que o status foi aberto
 
-  document.getElementById('modalPedido').innerHTML = `Pedido <b>${row['Pedido']}</b> · ${row['Emissor']||''}`;
+  document.getElementById('modalPedido').innerHTML = `Pedido <b>${row['Pedido']}</b> · <span class="emissor-name">${row['Emissor']||''}</span>`;
+
+  document.getElementById('modalSold').innerHTML = `<div class="k">Sold</div><div class="v">${row['Sold'] || '—'}</div>`;
 
   const timeChips = [];
   timeChips.push(`<div class="tchip">Aberto às <b>${fmtTime(row._openedAt)}</b></div>`);
@@ -1139,8 +1155,19 @@ function openModal(id){
     ['NF', row['Danfe'] || '—', 'nf highlight'],
     ['Vendedor/Supervisor', row['Vendedor/Supervisor'] || '—', 'vendedor highlight'],
     ['Ogv', row['Ogv'] || '—', ''],
-    ['Cidade', row['Cidade'] || '—', '']
+    ['Cidade', row['Cidade'] || '—', ''],
+    ['Endereço', row['Endereço'] || '—', ''],
+    ['Nº', row['Nº'] || '—', '']
   ].map(([k,v,cls])=>`<div class="item ${cls}"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+
+  // Obs. Entrega, destacada embaixo do formulário
+  const obsEntregaBox = document.getElementById('modalObsEntrega');
+  if(row['Obs. Entrega']){
+    obsEntregaBox.style.display = 'block';
+    document.getElementById('modalObsEntregaBox').textContent = row['Obs. Entrega'];
+  } else {
+    obsEntregaBox.style.display = 'none';
+  }
 
   // telefone do vendedor logo abaixo do nome
   const phoneRaw = row._vendorPhone;
