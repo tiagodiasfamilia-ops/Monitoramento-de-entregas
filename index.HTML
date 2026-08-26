@@ -31,7 +31,7 @@
   .container{padding:20px 24px 60px;}
 
   /* KPIs */
-  .kpis{display:grid; grid-template-columns:repeat(7,1fr); gap:12px; margin-bottom:18px;}
+  .kpis{display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:18px;}
   .kpi{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px;}
   .kpi .label{color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px;}
   .kpi .value{font-size:22px; font-weight:700; margin-top:4px;}
@@ -40,6 +40,8 @@
   .kpi.transito .value{color:var(--accent);}
   .kpi.reentrega .value{color:var(--orange-b);}
   .kpi.ocorrencia .value{color:#b98cff;}
+  .kpi.realocado .value{color:#2fd9b8;}
+  .kpi.nfparcial .value{color:#e070c2;}
   .kpi.cancelado .value{color:var(--red-b);}
   .kpi.taxa .value{color:var(--accent2);}
 
@@ -238,6 +240,8 @@
     <div class="kpi transito"><div class="label">Em trânsito</div><div class="value" id="kpiTransito">0</div></div>
     <div class="kpi reentrega"><div class="label">Reentregar</div><div class="value" id="kpiReentrega">0</div></div>
     <div class="kpi ocorrencia"><div class="label">Ocorrências</div><div class="value" id="kpiOcorrencia">0</div></div>
+    <div class="kpi realocado"><div class="label">Realocado</div><div class="value" id="kpiRealocado">0</div></div>
+    <div class="kpi nfparcial"><div class="label">NF Parcial</div><div class="value" id="kpiNfParcial">0</div></div>
     <div class="kpi cancelado"><div class="label">Canceladas</div><div class="value" id="kpiCancelado">0</div></div>
     <div class="kpi taxa"><div class="label">Taxa de entrega</div><div class="value" id="kpiTaxa">0%</div></div>
   </div>
@@ -305,7 +309,6 @@
         <option>Entregue</option>
         <option>Cancelado</option>
         <option>Reentrega</option>
-        <option>Parcial</option>
         <option>Trânsito</option>
         <option>Ocorrência</option>
         <option>Realocado</option>
@@ -474,7 +477,7 @@ const OGV_GROUPS = {
   'Linha Congelada': ['DBL','DBM','FCB1','PSO','OAK','ROO','BDL','BDM'],
   'Linha Seca': ['BRN8','BRN2','BRN4','HBK']
 };
-const STATUS_LIST = ['Entregue','Cancelado','Reentrega','Parcial','Trânsito','Ocorrência','Realocado','NF Parcial'];
+const STATUS_LIST = ['Entregue','Cancelado','Reentrega','Trânsito','Ocorrência','Realocado','NF Parcial'];
 const RESP_LIST = ['Transporte','Comercial','Armazém','ADM'];
 
 // ---------- State ----------
@@ -503,7 +506,7 @@ function normalizeStatus(raw){
     'entregue':'Entregue',
     'cancelado':'Cancelado',
     'reentrega':'Reentrega',
-    'parcial':'Parcial',
+    'parcial':'NF Parcial',
     'transito':'Trânsito',
     'emtransito':'Trânsito',
     'ocorrencia':'Ocorrência',
@@ -896,7 +899,6 @@ function statusBadgeClass(s){
     case 'Entregue': return 'b-entregue';
     case 'Cancelado': return 'b-cancelado';
     case 'Reentrega': return 'b-reentrega';
-    case 'Parcial': return 'b-parcial';
     case 'Trânsito': return 'b-transito';
     case 'Ocorrência': return 'b-ocorrencia';
     case 'Realocado': return 'b-realocado';
@@ -961,7 +963,7 @@ function renderEfficiencyDashboard(){
   const CATS = {
     'Cancelado': r => r['Status'] === 'Cancelado',
     'Re entrega': r => r['Status'] === 'Reentrega',
-    'Demais Ocorrências': r => r['Status'] === 'Ocorrência' || r['Status'] === 'Parcial'
+    'Demais Ocorrências': r => r['Status'] === 'Ocorrência' || r['Status'] === 'NF Parcial'
   };
 
   // conta por área x categoria (inclui "Não atribuído" para o que ainda não tem Responsável definido)
@@ -1086,6 +1088,8 @@ function updateKpis(){
   const transito = scope.filter(r=>r['Status']==='Trânsito').length;
   const reentrega = scope.filter(r=>r['Status']==='Reentrega').length;
   const ocorrencia = scope.filter(r=>r['Status']==='Ocorrência').length;
+  const realocado = scope.filter(r=>r['Status']==='Realocado').length;
+  const nfParcial = scope.filter(r=>r['Status']==='NF Parcial').length;
   const cancelado = scope.filter(r=>r['Status']==='Cancelado').length;
   const taxa = total ? Math.round((entregue/total)*1000)/10 : 0;
 
@@ -1094,6 +1098,8 @@ function updateKpis(){
   document.getElementById('kpiTransito').textContent = transito;
   document.getElementById('kpiReentrega').textContent = reentrega;
   document.getElementById('kpiOcorrencia').textContent = ocorrencia;
+  document.getElementById('kpiRealocado').textContent = realocado;
+  document.getElementById('kpiNfParcial').textContent = nfParcial;
   document.getElementById('kpiCancelado').textContent = cancelado;
   document.getElementById('kpiTaxa').textContent = taxa + '%';
 }
