@@ -119,6 +119,8 @@
   .b-parcial{background:#2a2140; color:#b98cff;}
   .b-transito{background:#122a45; color:var(--accent);}
   .b-ocorrencia{background:#3a2712; color:var(--orange-b);}
+  .b-realocado{background:#123a33; color:#2fd9b8;}
+  .b-nfparcial{background:#3a1730; color:#e070c2;}
   .b-tms-entregue{background:var(--ok); color:var(--ok-b);}
   .b-tms-transito{background:#3a2b12; color:#e2c24a;}
   .b-tms-rejeitado{background:var(--red); color:var(--red-b);}
@@ -306,6 +308,8 @@
         <option>Parcial</option>
         <option>Trânsito</option>
         <option>Ocorrência</option>
+        <option>Realocado</option>
+        <option>NF Parcial</option>
       </select>
     </div>
     <div class="field">
@@ -470,7 +474,7 @@ const OGV_GROUPS = {
   'Linha Congelada': ['DBL','DBM','FCB1','PSO','OAK','ROO','BDL','BDM'],
   'Linha Seca': ['BRN8','BRN2','BRN4','HBK']
 };
-const STATUS_LIST = ['Entregue','Cancelado','Reentrega','Parcial','Trânsito','Ocorrência'];
+const STATUS_LIST = ['Entregue','Cancelado','Reentrega','Parcial','Trânsito','Ocorrência','Realocado','NF Parcial'];
 const RESP_LIST = ['Transporte','Comercial','Armazém','ADM'];
 
 // ---------- State ----------
@@ -502,7 +506,9 @@ function normalizeStatus(raw){
     'parcial':'Parcial',
     'transito':'Trânsito',
     'emtransito':'Trânsito',
-    'ocorrencia':'Ocorrência'
+    'ocorrencia':'Ocorrência',
+    'realocado':'Realocado',
+    'nfparcial':'NF Parcial'
   };
   return map[key] || String(raw).trim(); // se não reconhecer, mantém o texto original
 }
@@ -893,6 +899,8 @@ function statusBadgeClass(s){
     case 'Parcial': return 'b-parcial';
     case 'Trânsito': return 'b-transito';
     case 'Ocorrência': return 'b-ocorrencia';
+    case 'Realocado': return 'b-realocado';
+    case 'NF Parcial': return 'b-nfparcial';
     default: return '';
   }
 }
