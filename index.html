@@ -1288,13 +1288,14 @@ document.getElementById('btnModalSave').onclick = ()=>{
 };
 
 // ---------- Export ----------
+// ordem exata de colunas exigida na exportação (modelo enviado pelo usuário) —
+// só essas colunas saem no Excel/PDF, na sequência abaixo, mesmo que a tabela tenha mais colunas
+const EXPORT_COLS = ['EMISSÃO NF','ENTREGA','Pedido','Ogv','Danfe','Sold','Emissor','Endereço','Nº','CEP','Cidade','Peso','Valor','Obs. Entrega','car','Transp','Veíc','Placa','Ent','Status','Ocorrência','OBS Adicional','Responsável','Vendedor/Supervisor'];
+
 function buildExportMatrix(){
   const rows = tableScopeRows();
-  const header = DISPLAY_COLS.map(c => COL_LABELS[c] || c);
-  const body = rows.map(row => DISPLAY_COLS.map(col=>{
-    if(col==='__SEL__') return '';
-    return row[col] ?? '';
-  }));
+  const header = EXPORT_COLS.map(c => COL_LABELS[c] || c);
+  const body = rows.map(row => EXPORT_COLS.map(col => row[col] ?? ''));
   return {header, body};
 }
 
