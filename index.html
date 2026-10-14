@@ -573,15 +573,23 @@ function importAcompanhamentoFile(file){
         const ws = wb.Sheets[sheetName];
         const json = XLSX.utils.sheet_to_json(ws, {defval:''});
         const headerRow = XLSX.utils.sheet_to_json(ws, {header:1})[0] || [];
-        const lastColName = headerRow[headerRow.length - 1];
-        const isNewPhoneCol = lastColName && !BASE_COLS.includes(lastColName);
+        // localiza Vendedor e Telefone pelo NOME do cabeçalho (qualquer posição); fallback: colunas X (24ª) e Y (25ª)
+        const hNorm = h => normalizeHeader(h);
+        const isKnownBase = h => BASE_COLS.some(c => hNorm(c) === hNorm(h));
+        let vendorColName = headerRow.find(h => h && /vendedor|supervisor/.test(hNorm(h)));
+        let phoneColName = headerRow.find(h => h && /telefone|fone|celular|whats|contato/.test(hNorm(h)));
+        let vendorFrom = vendorColName ? 'cabeçalho' : '', phoneFrom = phoneColName ? 'cabeçalho' : '';
+        if(!vendorColName && headerRow[23] && !isKnownBase(headerRow[23])){ vendorColName = headerRow[23]; vendorFrom = 'coluna X'; }
+        if(!phoneColName && headerRow[24] && !isKnownBase(headerRow[24])){ phoneColName = headerRow[24]; phoneFrom = 'coluna Y'; }
+        const lastColName = phoneColName;
+        const isNewPhoneCol = !!phoneColName;
 
         // mapa: nome normalizado do cabeçalho -> nome real da coluna no arquivo
         const headerMap = {};
         headerRow.forEach(h => { headerMap[normalizeHeader(h)] = h; });
 
         const missingCols = [];
-        let phoneCount = 0;
+        let phoneCount = 0, vendorCount = 0;
         batchCounter++;
         const imported = json.map(row=>{
           const obj = {_id: uid(), _batch: batchCounter, _file: file.name, _devolucao: null};
@@ -607,8 +615,12 @@ function importAcompanhamentoFile(file){
           obj['Ocorrência'] = obj['Ocorrência'] || '';
           obj['OBS Adicional'] = obj['OBS Adicional'] || '';
           obj['Responsável'] = normalizeResponsavel(obj['Responsável']);
-          // telefone do vendedor: última coluna do arquivo importado
-          obj._vendorPhone = isNewPhoneCol ? String(row[lastColName] || '').trim() : '';
+          if(vendorColName && !String(obj['Vendedor/Supervisor']||'').trim()){
+            obj['Vendedor/Supervisor'] = String(row[vendorColName] == null ? '' : row[vendorColName]).trim();
+          }
+          if(obj['Vendedor/Supervisor']) vendorCount++;
+          // telefone do vendedor: coluna "Telefone" (por nome) do arquivo importado
+          obj._vendorPhone = isNewPhoneCol ? String(row[phoneColName] == null ? '' : row[phoneColName]).trim() : '';
           if(obj._vendorPhone) phoneCount++;
           return obj;
         });
@@ -623,13 +635,16 @@ function importAcompanhamentoFile(file){
           const foundFuzzy = headerMap[normalizeHeader(col)] !== undefined;
           const normCol = normalizeHeader(col);
           const foundPartial = headerRow.some(h => h && normalizeHeader(h).startsWith(normCol));
-          if(!foundExact && !foundFuzzy && !foundPartial) missingCols.push(col);
+          if(!foundExact && !foundFuzzy && !foundPartial && !(col==='Vendedor/Supervisor' && vendorColName)) missingCols.push(col);
         });
 
         syncPedidosBatch(imported); // grava no Firebase — o listener atualiza "acompanhamento" e re-renderiza sozinho
-        const phoneMsg = isNewPhoneCol
-          ? `telefone lido da coluna "${lastColName}" · ${phoneCount} de ${imported.length} pedido(s) com telefone`
-          : `nenhuma coluna extra de telefone encontrada após "${BASE_COLS[BASE_COLS.length-1]}" neste arquivo`;
+        const vendMsg = vendorColName
+          ? `Vendedor lido de "${vendorColName}" (${vendorFrom}) · ${vendorCount} de ${imported.length} com vendedor`
+          : '⚠ coluna de Vendedor não encontrada';
+        const phoneMsg = vendMsg + ' | ' + (isNewPhoneCol
+          ? `Telefone lido de "${phoneColName}" (${phoneFrom}) · ${phoneCount} de ${imported.length} com telefone`
+          : '⚠ coluna de Telefone não encontrada');
         vendorSheetStatus = missingCols.length
           ? `${phoneMsg} · ⚠ colunas não encontradas no arquivo: ${missingCols.join(', ')} (cabeçalhos lidos: ${headerRow.join(', ')})`
           : phoneMsg;
